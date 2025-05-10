@@ -28,6 +28,8 @@ export function useAuth() {
   const login = async (email, password) => {
     await api.post('/auth/login', { email, password });
     await checkAuth();
+     window.location.href = '/dashboard';
+
   };
 
   const logout = async () => {
