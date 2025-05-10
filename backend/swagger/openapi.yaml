@@ -1,0 +1,183 @@
+openapi: 3.0.3
+info:
+  title: Time Tracker API
+  version: 1.0.0
+  description: API for tracking working time
+servers:
+  - url: /api
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: jwt
+  schemas:
+    User:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+        role:
+          type: string
+          enum: [user, admin]
+    Project:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        createdBy:
+          type: string
+    WorkSession:
+      type: object
+      properties:
+        user:
+          type: string
+        project:
+          type: string
+        description:
+          type: string
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+paths:
+  /auth/register:
+    post:
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '201':
+          description: Registration successful
+  /auth/confirm-email/{token}:
+    get:
+      summary: Confirm email
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Email confirmed
+  /auth/login:
+    post:
+      summary: Login user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+  /auth/logout:
+    post:
+      summary: Logout user
+      responses:
+        '200':
+          description: Logout successful
+  /projects:
+    post:
+      summary: Create a project
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Project'
+      responses:
+        '201':
+          description: Project created
+    get:
+      summary: Get projects
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+        - in: query
+          name: sort
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of projects
+  /work/start:
+    post:
+      summary: Start work session
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                projectId:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '201':
+          description: Session started
+  /work/stop:
+    post:
+      summary: Stop work session
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Session stopped
+  /work/me:
+    get:
+      summary: Get user's sessions
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: User's sessions
+  /work/all:
+    get:
+      summary: Get all sessions (admin)
+      security:
+        - cookieAuth: []
+      parameters:
+        - in: query
+          name: userId
+          schema:
+            type: string
+      responses:
+        '200':
+          description: All sessions
