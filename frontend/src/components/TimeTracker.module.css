@@ -109,3 +109,13 @@
   border-radius: 0.375rem;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
+
+.activeSessionTitle {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.activeSession p {
+  margin-bottom: 0.5rem;
+}

@@ -132,4 +132,118 @@ export class WorkSessionService {
     const sessions = await WorkSessionModel.aggregate(pipeline);
     return sessions;
   }
+
+  async getAllActiveSessions(): Promise<IWorkSession[]> {
+    const sessions = await WorkSessionModel.aggregate([
+      { $match: { endTime: null } },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'user',
+          foreignField: '_id',
+          as: 'user',
+        },
+      },
+      { $unwind: '$user' },
+      {
+        $lookup: {
+          from: 'projects',
+          localField: 'project',
+          foreignField: '_id',
+          as: 'project',
+        },
+      },
+      { $unwind: '$project' },
+      {
+        $project: {
+          _id: 1,
+          user: { email: '$user.email' },
+          project: { name: '$project.name' },
+          description: 1,
+          startTime: 1,
+          endTime: 1,
+        },
+      },
+    ]);
+    return sessions;
+  }
+
+  async getAllSessions(): Promise<IWorkSession[]> {
+    const sessions = await WorkSessionModel.aggregate([
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'user',
+          foreignField: '_id',
+          as: 'user',
+        },
+      },
+      { $unwind: '$user' },
+      {
+        $lookup: {
+          from: 'projects',
+          localField: 'project',
+          foreignField: '_id',
+          as: 'project',
+        },
+      },
+      { $unwind: '$project' },
+      {
+        $project: {
+          _id: 1,
+          user: { email: '$user.email' },
+          project: { name: '$project.name' },
+          description: 1,
+          startTime: 1,
+          endTime: 1,
+        },
+      },
+      { $sort: { startTime: -1 } },
+    ]);
+    return sessions;
+  }
+
+  async getTotalTimeByProject(): Promise<{ projectId: string; projectName: string; totalHours: number }[]> {
+    const pipeline: PipelineStage[] = [
+      {
+        $match: {
+          endTime: { $ne: null }, // Only include completed sessions
+        },
+      },
+      {
+        $lookup: {
+          from: 'projects',
+          localField: 'project',
+          foreignField: '_id',
+          as: 'project',
+        },
+      },
+      { $unwind: '$project' },
+      {
+        $group: {
+          _id: {
+            projectId: '$project._id',
+            projectName: '$project.name',
+          },
+          totalHours: {
+            $sum: {
+              $divide: [{ $subtract: ['$endTime', '$startTime'] }, 1000 * 60 * 60],
+            },
+          },
+        },
+      },
+      {
+        $project: {
+          projectId: '$_id.projectId',
+          projectName: '$_id.projectName',
+          totalHours: 1,
+          _id: 0,
+        },
+      },
+      { $sort: { projectName: 1 } },
+    ];
+
+    const result = await WorkSessionModel.aggregate(pipeline);
+    return result;
+  }
 }

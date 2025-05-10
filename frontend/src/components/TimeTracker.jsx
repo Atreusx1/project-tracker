@@ -9,6 +9,7 @@ function TimeTracker() {
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [elapsedTime, setElapsedTime] = useState(0);
   const { projects, fetchProjects } = useProjects();
   const { activeSession, startSession, stopSession, loadActiveSession } = useWorkSessions();
 
@@ -16,6 +17,20 @@ function TimeTracker() {
     fetchProjects();
     loadActiveSession();
   }, []);
+
+  // Update elapsed time every second when session is active
+  useEffect(() => {
+    let timer;
+    if (activeSession) {
+      const startTime = new Date(activeSession.startTime).getTime();
+      timer = setInterval(() => {
+        const currentTime = Date.now();
+        const secondsElapsed = Math.floor((currentTime - startTime) / 1000);
+        setElapsedTime(secondsElapsed);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [activeSession]);
 
   const handleStart = async (e) => {
     e.preventDefault();
@@ -37,6 +52,7 @@ function TimeTracker() {
     setError('');
     try {
       await stopSession();
+      setElapsedTime(0);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to stop session');
     } finally {
@@ -44,13 +60,23 @@ function TimeTracker() {
     }
   };
 
+  // Format elapsed time as HH:MM:SS
+  const formatElapsedTime = (seconds) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
   return (
     <div className={styles.container}>
       <h2 className={styles.title}>Time Tracker</h2>
       {activeSession ? (
         <div className={styles.activeSession}>
-          <p>Active session: {activeSession.description || 'No description'}</p>
-          <p>Project: {activeSession.project.name}</p>
+          <h3 className={styles.activeSessionTitle}>Active Session</h3>
+          <p><strong>Project:</strong> {activeSession.project.name}</p>
+          <p><strong>Description:</strong> {activeSession.description || 'No description'}</p>
+          <p><strong>Elapsed Time:</strong> {formatElapsedTime(elapsedTime)}</p>
           <button
             onClick={handleStop}
             className={styles.stopButton}

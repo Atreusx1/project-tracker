@@ -6,10 +6,9 @@ export function useWorkSessions() {
 
   const loadActiveSession = async () => {
     try {
-      const response = await api.get('/work/me');
-      const sessions = response.data;
-      setActiveSession(sessions.find((session) => !session.endTime) || null);
-    } catch {
+      const response = await api.get('/work/active');
+      setActiveSession(response.data);
+    } catch (error) {
       setActiveSession(null);
     }
   };
@@ -29,7 +28,7 @@ export function useWorkSessions() {
     return response.data;
   };
 
-  const fetchAllUsersWorkTimeByDay = async (userIds = []) => {
+  const fetchAllUsersWorkTimeByDay = async (userIds) => {
     const params = userIds.length > 0 ? { userIds } : {};
     const response = await api.get('/work/all-time-by-day', { params });
     return response.data;
@@ -37,6 +36,21 @@ export function useWorkSessions() {
 
   const fetchUsers = async () => {
     const response = await api.get('/users');
+    return response.data;
+  };
+
+  const fetchAllActiveSessions = async () => {
+    const response = await api.get('/work/active-sessions');
+    return response.data;
+  };
+
+  const fetchAllSessions = async () => {
+    const response = await api.get('/work/all-sessions');
+    return response.data;
+  };
+
+  const fetchTotalTimeByProject = async () => {
+    const response = await api.get('/work/total-time-by-project');
     return response.data;
   };
 
@@ -48,5 +62,8 @@ export function useWorkSessions() {
     fetchUserWorkTimeByDay,
     fetchAllUsersWorkTimeByDay,
     fetchUsers,
+    fetchAllActiveSessions,
+    fetchAllSessions,
+    fetchTotalTimeByProject,
   };
 }

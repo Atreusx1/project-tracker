@@ -82,4 +82,37 @@ export class WorkSessionController {
       next(error);
     }
   };
+
+  getAllActiveSessions = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (req.user!.role !== 'admin') {
+        throw new AppError('Admin access required', 403);
+      }
+      const activeSessions = await this.workSessionService.getAllActiveSessions();
+      res.status(200).json(activeSessions);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getAllSessions = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (req.user!.role !== 'admin') {
+        throw new AppError('Admin access required', 403);
+      }
+      const sessions = await this.workSessionService.getAllSessions();
+      res.status(200).json(sessions);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  getTotalTimeByProject = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const totalTime = await this.workSessionService.getTotalTimeByProject();
+      res.status(200).json(totalTime);
+    } catch (error) {
+      next(error);
+    }
+  };
 }

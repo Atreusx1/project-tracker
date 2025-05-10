@@ -1035,3 +1035,5 @@
 {"level":"error","message":"400 - Email already confirmed","timestamp":"2025-05-10T02:45:10.840Z"}
 {"level":"error","message":"400 - Email already confirmed","timestamp":"2025-05-10T02:45:43.396Z"}
 {"level":"error","message":"400 - Email already confirmed","timestamp":"2025-05-10T02:45:43.419Z"}
+{"level":"error","message":"401 - Invalid email or password","timestamp":"2025-05-10T16:10:39.781Z"}
+{"level":"error","message":"401 - Invalid email or password","timestamp":"2025-05-10T16:10:51.872Z"}
