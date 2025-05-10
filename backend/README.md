@@ -19,3 +19,20 @@ Run in development mode with hot-reload:
 yarn dev
 # or
 npm run dev
+
+
+Run the Script with an Email Argument:
+powershell
+
+Copy
+cd C:\Time Tracker\backend
+npx ts-node scripts/makeUserAdmin.ts test@example.com
+Expected Output (if the user exists):
+text
+
+Copy
+Connecting to MongoDB...
+Connected to MongoDB
+User test@example.com has been updated to admin role
+Updated user: { email: 'test@example.com', role: 'admin' }
+Disconnected from MongoDB
