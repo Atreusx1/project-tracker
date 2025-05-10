@@ -1,183 +1,1127 @@
+
 openapi: 3.0.3
 info:
   title: Time Tracker API
+  description: |
+    The Time Tracker API provides a robust interface for managing user authentication, project creation, and work session tracking. It supports individual users tracking their work time on projects and administrators monitoring team productivity. Key features include JWT-based authentication, role-based access control (user vs. admin), and detailed reporting on work sessions and project time allocation.
+
+    All endpoints (except `/auth/register` and `/auth/login`) require authentication via a JWT token, which can be passed in the `Authorization` header (`Bearer <token>`) or as a cookie (`jwt=<token>`). The API is designed for use with the Time Tracker frontend but can be integrated with any client supporting HTTP requests.
   version: 1.0.0
-  description: API for tracking working time
+  contact:
+    email: support@timetracker.example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
 servers:
-  - url: /api
-components:
-  securitySchemes:
-    cookieAuth:
-      type: apiKey
-      in: cookie
-      name: jwt
-  schemas:
-    User:
-      type: object
-      properties:
-        email:
-          type: string
-        password:
-          type: string
-        role:
-          type: string
-          enum: [user, admin]
-    Project:
-      type: object
-      properties:
-        name:
-          type: string
-        description:
-          type: string
-        createdBy:
-          type: string
-    WorkSession:
-      type: object
-      properties:
-        user:
-          type: string
-        project:
-          type: string
-        description:
-          type: string
-        startTime:
-          type: string
-          format: date-time
-        endTime:
-          type: string
-          format: date-time
+  - url: http://localhost:3000/api
+    description: Local development server
+security:
+  - bearerAuth: []
 paths:
   /auth/register:
     post:
       summary: Register a new user
+      description: |
+        Creates a new user account with the provided email and password. The password is hashed before storage, and the user is assigned the `user` role by default. The endpoint returns the created user’s details.
+
+        **Constraints**:
+        - Email must be unique and valid.
+        - Password must be at least 6 characters long.
+        - Returns a 400 error if the email is already registered.
+      tags:
+        - Authentication
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                email:
-                  type: string
-                password:
-                  type: string
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              email: user@example.com
+              password: password123
       responses:
         '201':
-          description: Registration successful
-  /auth/confirm-email/{token}:
-    get:
-      summary: Confirm email
-      parameters:
-        - in: path
-          name: token
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Email confirmed
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+              example:
+                _id: 507f1f77bcf86cd799439011
+                email: user@example.com
+                role: user
+        '400':
+          description: Invalid request (e.g., email already exists, invalid email, or password too short)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Email already exists
+        '500':
+          description: Server error (e.g., database failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Internal server error
   /auth/login:
     post:
-      summary: Login user
+      summary: Log in a user
+      description: |
+        Authenticates a user with the provided email and password. If successful, returns the user’s details and sets a JWT cookie (`jwt=<token>`) with a 7-day expiration. The JWT can be used for subsequent authenticated requests.
+
+        **Notes**:
+        - The JWT is also included in the `Authorization` header for flexibility.
+        - Returns a 401 error for invalid credentials.
+      tags:
+        - Authentication
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                email:
-                  type: string
-                password:
-                  type: string
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: user@example.com
+              password: password123
       responses:
         '200':
           description: Login successful
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; HttpOnly; Path=/; Max-Age=604800
+              description: Sets the JWT cookie with a 7-day expiration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+              example:
+                _id: 507f1f77bcf86cd799439011
+                email: user@example.com
+                role: user
+        '401':
+          description: Invalid email or password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Invalid credentials
+        '500':
+          description: Server error (e.g., authentication service failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Internal server error
   /auth/logout:
     post:
-      summary: Logout user
+      summary: Log out a user
+      description: |
+        Clears the JWT cookie, effectively logging out the user. No authentication is required, as the endpoint only removes the cookie.
+
+        **Notes**:
+        - Safe to call even if no cookie is present.
+        - Returns a success message regardless of cookie state.
+      tags:
+        - Authentication
       responses:
         '200':
           description: Logout successful
-  /projects:
-    post:
-      summary: Create a project
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: jwt=; HttpOnly; Path=/; Max-Age=0
+              description: Clears the JWT cookie
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    description: Confirmation message
+                required:
+                  - message
+              example:
+                message: Logged out successfully
+        '500':
+          description: Server error (e.g., cookie handling failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Internal server error
+  /users:
+    get:
+      summary: Get all users (admin only)
+      description: |
+        Retrieves a list of all registered users, including their IDs, emails, and roles. Accessible only to users with the `admin` role.
+
+        **Use Case**:
+        - Used in the admin dashboard to display user data or filter work time reports.
+
+        **Constraints**:
+        - Requires admin authentication.
+        - Returns a 403 error if the user is not an admin.
+      tags:
+        - Users
       security:
-        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of all users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+              example:
+                - _id: 507f1f77bcf86cd799439011
+                  email: user1@example.com
+                  role: user
+                - _id: 507f1f77bcf86cd799439012
+                  email: admin@example.com
+                  role: admin
+        '401':
+          description: Unauthorized (missing or invalid JWT)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
+        '403':
+          description: Forbidden (user is not an admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Admin access required
+        '500':
+          description: Server error (e.g., database query failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Internal server error
+  /projects:
+    get:
+      summary: Get all projects
+      description: |
+        Retrieves a list of all projects created by any user, including their names, descriptions, creation dates, and update dates. Accessible to all authenticated users.
+
+        **Use Case**:
+        - Populates the project list in the frontend’s projects page.
+        - Used to select projects for starting work sessions.
+
+        **Notes**:
+        - Returns an empty array if no projects exist.
+      tags:
+        - Projects
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of all projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Project'
+              example:
+                - _id: 507f1f77bcf86cd799439013
+                  name: Project A
+                  description: A sample project for testing
+                  createdAt: 2025-05-10T10:00:00Z
+                  updatedAt: 2025-05-10T10:00:00Z
+                - _id: 507f1f77bcf86cd799439014
+                  name: Project B
+                  createdAt: 2025-05-10T11:00:00Z
+                  updatedAt: 2025-05-10T11:00:00Z
+        '401':
+          description: Unauthorized (missing or invalid JWT)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
+        '500':
+          description: Server error (e.g., database query failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Internal server error
+    post:
+      summary: Create a new project
+      description: |
+        Creates a new project with a name and optional description. The project is stored with automatic timestamps (`createdAt` and `updatedAt`). Accessible to all authenticated users.
+
+        **Constraints**:
+        - Name is required and must be at least 1 character.
+        - Description is optional but limited to 500 characters.
+        - Returns a 400 error if the name is missing or invalid.
+
+        **Use Case**:
+        - Used in the frontend’s project creation form.
+      tags:
+        - Projects
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/Project'
+              $ref: '#/components/schemas/ProjectCreateRequest'
+            example:
+              name: New Project
+              description: A project to track development tasks
       responses:
         '201':
-          description: Project created
-    get:
-      summary: Get projects
+          description: Project created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+              example:
+                _id: 507f1f77bcf86cd799439015
+                name: New Project
+                description: A project to track development tasks
+                createdAt: 2025-05-10T12:00:00Z
+                updatedAt: 2025-05-10T12:00:00Z
+        '400':
+          description: Invalid request (e.g., missing name)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Name is required
+        '401':
+          description: Unauthorized (missing or invalid JWT)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
+        '500':
+          description: Server error (e.g., database save failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Internal server error
+  /projects/{id}:
+    delete:
+      summary: Delete a project
+      description: |
+        Deletes a project by its ID. Accessible to all authenticated users, though typically used in the frontend’s project management interface.
+
+        **Constraints**:
+        - The project ID must be a valid MongoDB ObjectId.
+        - Returns a 404 error if the project does not exist.
+
+        **Notes**:
+        - Does not delete associated work sessions (they remain with the project ID for historical purposes).
+      tags:
+        - Projects
       security:
-        - cookieAuth: []
+        - bearerAuth: []
       parameters:
-        - in: query
-          name: page
-          schema:
-            type: integer
-        - in: query
-          name: limit
-          schema:
-            type: integer
-        - in: query
-          name: sort
+        - in: path
+          name: id
+          required: true
           schema:
             type: string
+            pattern: '^[0-9a-fA-F]{24}$'
+          description: The MongoDB ObjectId of the project to delete
       responses:
         '200':
-          description: List of projects
+          description: Project deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    description: Confirmation message
+                required:
+                  - message
+              example:
+                message: Project deleted
+        '401':
+          description: Unauthorized (missing or invalid JWT)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Project not found
+        '500':
+          description: Server error (e.g., database deletion failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Internal server error
   /work/start:
     post:
-      summary: Start work session
+      summary: Start a new work session
+      description: |
+        Starts a new work session for the authenticated user on a specified project. The session includes a start time and an optional description. Only one active session is allowed per user.
+
+        **Constraints**:
+        - `projectId` must be a valid MongoDB ObjectId and correspond to an existing project.
+        - Returns a 400 error if an active session already exists.
+        - Description is optional but limited to 500 characters.
+
+        **Use Case**:
+        - Initiates time tracking in the frontend’s tracker page.
+      tags:
+        - Work Sessions
       security:
-        - cookieAuth: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                projectId:
-                  type: string
-                description:
-                  type: string
+              $ref: '#/components/schemas/WorkSessionStartRequest'
+            example:
+              projectId: 507f1f77bcf86cd799439013
+              description: Working on feature X
       responses:
         '201':
-          description: Session started
+          description: Work session started successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkSession'
+              example:
+                _id: 507f1f77bcf86cd799439016
+                user: 507f1f77bcf86cd799439011
+                project:
+                  _id: 507f1f77bcf86cd799439013
+                  name: Project A
+                description: Working on feature X
+                startTime: 2025-05-10T12:00:00Z
+                endTime: null
+        '400':
+          description: Invalid request (e.g., active session exists, invalid projectId)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: An active work session already exists
+        '401':
+          description: Unauthorized (missing or invalid JWT)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Project not found
+        '500':
+          description: Server error (e.g., database save failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Internal server error
   /work/stop:
     post:
-      summary: Stop work session
+      summary: Stop the active work session
+      description: |
+        Stops the authenticated user’s active work session by setting its `endTime`. If no active session exists, returns a 404 error.
+
+        **Use Case**:
+        - Ends time tracking in the frontend’s tracker page.
+
+        **Notes**:
+        - The duration is calculated as `endTime - startTime` for reporting purposes.
+      tags:
+        - Work Sessions
       security:
-        - cookieAuth: []
+        - bearerAuth: []
       responses:
         '200':
-          description: Session stopped
+          description: Work session stopped successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    description: Confirmation message
+                required:
+                  - message
+              example:
+                message: Work session stopped
+        '401':
+          description: Unauthorized (missing or invalid JWT)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
+        '404':
+          description: No active work session found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: No active work session found
+        '500':
+          description: Server error (e.g., database update failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Internal server error
   /work/me:
     get:
-      summary: Get user's sessions
+      summary: Get user’s work sessions
+      description: |
+        Retrieves all work sessions for the authenticated user, including both active and completed sessions. Each session includes the associated project’s details (populated).
+
+        **Use Case**:
+        - Displays the user’s work history in the frontend’s tracker page.
+
+        **Notes**:
+        - Returns an empty array if the user has no sessions.
+        - Sessions are sorted by `startTime` (newest first).
+      tags:
+        - Work Sessions
       security:
-        - cookieAuth: []
+        - bearerAuth: []
       responses:
         '200':
-          description: User's sessions
-  /work/all:
+          description: List of user’s work sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkSession'
+              example:
+                - _id: 507f1f77bcf86cd799439016
+                  user: 507f1f77bcf86cd799439011
+                  project:
+                    _id: 507f1f77bcf86cd799439013
+                    name: Project A
+                  description: Working on feature X
+                  startTime: 2025-05-10T12:00:00Z
+                  endTime: 2025-05-10T14:30:00Z
+                - _id: 507f1f77bcf86cd799439017
+                  user: 507f1f77bcf86cd799439011
+                  project:
+                    _id: 507f1f77bcf86cd799439013
+                    name: Project A
+                  description: Ongoing task
+                  startTime: 2025-05-10T15:00:00Z
+                  endTime: null
+        '401':
+          description: Unauthorized (missing or invalid JWT)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
+        '500':
+          description: Server error (e.g., database query failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Internal server error
+  /work/time-by-day:
     get:
-      summary: Get all sessions (admin)
+      summary: Get user’s work time by day
+      description: |
+        Aggregates the authenticated user’s work time by day, calculating total hours from completed sessions (`endTime` not null). Returns a list of dates and hours.
+
+        **Use Case**:
+        - Powers the user’s daily work time chart in the frontend.
+
+        **Notes**:
+        - Hours are calculated as `(endTime - startTime) / (1000 * 60 * 60)`.
+        - Returns an empty array if no completed sessions exist.
+        - Sorted by date ascending.
+      tags:
+        - Work Sessions
       security:
-        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User’s work time aggregated by day
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkTimeByDay'
+              example:
+                - date: 2025-05-10
+                  totalHours: 2.5
+                - date: 2025-05-11
+                  totalHours: 3.75
+        '401':
+          description: Unauthorized (missing or invalid JWT)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
+        '500':
+          description: Server error (e.g., aggregation failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Internal server error
+  /work/all-time-by-day:
+    get:
+      summary: Get all users’ work time by day (admin only)
+      description: |
+        Aggregates work time by day for all users or a specified subset, including user IDs and emails. Accessible only to users with the `admin` role.
+
+        **Parameters**:
+        - `userIds`: Optional query parameter to filter by specific user IDs.
+
+        **Use Case**:
+        - Used in the admin dashboard to display a bar chart of team work time.
+
+        **Constraints**:
+        - Returns a 403 error if the user is not an admin.
+        - Invalid `userIds` are ignored.
+        - Sorted by date and user email.
+      tags:
+        - Work Sessions
+      security:
+        - bearerAuth: []
       parameters:
         - in: query
-          name: userId
+          name: userIds
           schema:
-            type: string
+            type: array
+            items:
+              type: string
+              pattern: '^[0-9a-fA-F]{24}$'
+          description: Optional list of MongoDB ObjectIds to filter users
+          example: ['507f1f77bcf86cd799439011', '507f1f77bcf86cd799439012']
       responses:
         '200':
-          description: All sessions
+          description: Work time aggregated by day for all or specified users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkTimeByDayWithUser'
+              example:
+                - date: 2025-05-10
+                  userId: 507f1f77bcf86cd799439011
+                  userEmail: user1@example.com
+                  totalHours: 2.5
+                - date: 2025-05-10
+                  userId: 507f1f77bcf86cd799439012
+                  userEmail: user2@example.com
+                  totalHours: 1.75
+        '401':
+          description: Unauthorized (missing or invalid JWT)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
+        '403':
+          description: Forbidden (user is not an admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Admin access required
+        '500':
+          description: Server error (e.g., aggregation failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Internal server error
+  /work/active-sessions:
+    get:
+      summary: Get all active work sessions (admin only)
+      description: |
+        Retrieves all active work sessions (sessions with `endTime: null`) across all users, including user emails and project names. Accessible only to users with the `admin` role.
+
+        **Use Case**:
+        - Displays real-time active sessions in the admin dashboard with live timers.
+
+        **Notes**:
+        - Returns an empty array if no active sessions exist.
+        - Sorted by `startTime` descending.
+      tags:
+        - Work Sessions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of all active work sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkSession'
+              example:
+                - _id: 507f1f77bcf86cd799439017
+                  user:
+                    email: user1@example.com
+                  project:
+                    _id: 507f1f77bcf86cd799439013
+                    name: Project A
+                  description: Ongoing task
+                  startTime: 2025-05-10T15:00:00Z
+                  endTime: null
+        '401':
+          description: Unauthorized (missing or invalid JWT)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
+        '403':
+          description: Forbidden (user is not an admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Admin access required
+        '500':
+          description: Server error (e.g., database query failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Internal server error
+  /work/all-sessions:
+    get:
+      summary: Get all work sessions (admin only)
+      description: |
+        Retrieves all work sessions (active and completed) across all users, including user emails, project names, and session details. Accessible only to users with the `admin` role.
+
+        **Use Case**:
+        - Displays complete session history in the admin dashboard.
+
+        **Notes**:
+        - Returns an empty array if no sessions exist.
+        - Sorted by `startTime` descending.
+      tags:
+        - Work Sessions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of all work sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkSession'
+              example:
+                - _id: 507f1f77bcf86cd799439016
+                  user:
+                    email: user1@example.com
+                  project:
+                    _id: 507f1f77bcf86cd799439013
+                    name: Project A
+                  description: Working on feature X
+                  startTime: 2025-05-10T12:00:00Z
+                  endTime: 2025-05-10T14:30:00Z
+                - _id: 507f1f77bcf86cd799439017
+                  user:
+                    email: user1@example.com
+                  project:
+                    _id: 507f1f77bcf86cd799439013
+                    name: Project A
+                  description: Ongoing task
+                  startTime: 2025-05-10T15:00:00Z
+                  endTime: null
+        '401':
+          description: Unauthorized (missing or invalid JWT)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
+        '403':
+          description: Forbidden (user is not an admin)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Admin access required
+        '500':
+          description: Server error (e.g., database query failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Internal server error
+  /work/total-time-by-project:
+    get:
+      summary: Get total work time by project
+      description: |
+        Aggregates total work time for each project based on completed sessions (`endTime` not null). Returns project IDs, names, and total hours worked. Accessible to all authenticated users.
+
+        **Use Case**:
+        - Displays total hours per project in the frontend’s projects page.
+
+        **Notes**:
+        - Hours are calculated as `(endTime - startTime) / (1000 * 60 * 60)` for completed sessions.
+        - Returns an empty array if no completed sessions exist.
+        - Sorted by project name ascending.
+      tags:
+        - Work Sessions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Total work time for each project
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TotalTimeByProject'
+              example:
+                - projectId: 507f1f77bcf86cd799439013
+                  projectName: Project A
+                  totalHours: 12.5
+                - projectId: 507f1f77bcf86cd799439014
+                  projectName: Project B
+                  totalHours: 8.75
+        '401':
+          description: Unauthorized (missing or invalid JWT)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Unauthorized
+        '500':
+          description: Server error (e.g., aggregation failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: Internal server error
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token required for all endpoints except `/auth/register` and `/auth/login`. Obtain the token via `/auth/login` and include it in the `Authorization` header as `Bearer <token>` or as a cookie (`jwt=<token>`). The token expires after 7 days.
+  schemas:
+    User:
+      type: object
+      properties:
+        _id:
+          type: string
+          description: Unique MongoDB ObjectId of the user
+          pattern: '^[0-9a-fA-F]{24}$'
+        email:
+          type: string
+          format: email
+          description: User’s email address, must be unique
+        role:
+          type: string
+          enum: [user, admin]
+          description: User’s role, determining access to admin endpoints
+      required:
+        - _id
+        - email
+        - role
+    RegisterRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: User’s email address
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          description: User’s password, minimum 6 characters
+          minLength: 6
+          example: password123
+      required:
+        - email
+        - password
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: User’s email address
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          description: User’s password
+          minLength: 6
+          example: password123
+      required:
+        - email
+        - password
+    Project:
+      type: object
+      properties:
+        _id:
+          type: string
+          description: Unique MongoDB ObjectId of the project
+          pattern: '^[0-9a-fA-F]{24}$'
+        name:
+          type: string
+          description: Project name, must be at least 1 character
+          minLength: 1
+          maxLength: 100
+        description:
+          type: string
+          description: Optional project description
+          maxLength: 500
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the project was created
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the project was last updated
+      required:
+        - _id
+        - name
+        - createdAt
+        - updatedAt
+    ProjectCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Project name
+          minLength: 1
+          maxLength: 100
+          example: New Project
+        description:
+          type: string
+          description: Optional project description
+          maxLength: 500
+          nullable: true
+          example: A project to track development tasks
+      required:
+        - name
+    WorkSession:
+      type: object
+      properties:
+        _id:
+          type: string
+          description: Unique MongoDB ObjectId of the work session
+          pattern: '^[0-9a-fA-F]{24}$'
+        user:
+          oneOf:
+            - type: string
+              description: MongoDB ObjectId of the user (for user endpoints)
+              pattern: '^[0-9a-fA-F]{24}$'
+            - type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: User’s email address (for admin endpoints)
+              required:
+                - email
+              description: Populated user object with email (for admin endpoints)
+        project:
+          oneOf:
+            - type: string
+              description: MongoDB ObjectId of the project (for some endpoints)
+              pattern: '^[0-9a-fA-F]{24}$'
+            - type: object
+              properties:
+                _id:
+                  type: string
+                  description: Project ID
+                  pattern: '^[0-9a-fA-F]{24}$'
+                name:
+                  type: string
+                  description: Project name
+              required:
+                - _id
+                - name
+              description: Populated project object with ID and name
+        description:
+          type: string
+          description: Optional description of the work session
+          maxLength: 500
+          nullable: true
+        startTime:
+          type: string
+          format: date-time
+          description: Timestamp when the session started
+        endTime:
+          type: string
+          format: date-time
+          description: Timestamp when the session ended (null for active sessions)
+          nullable: true
+      required:
+        - _id
+        - user
+        - project
+        - startTime
+    WorkSessionStartRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          description: MongoDB ObjectId of the project
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 507f1f77bcf86cd799439013
+        description:
+          type: string
+          description: Optional description of the work session
+          maxLength: 500
+          nullable: true
+          example: Working on feature X
+      required:
+        - projectId
+    WorkTimeByDay:
+      type: object
+      properties:
+        date:
+          type: string
+          description: Date in YYYY-MM-DD format
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        totalHours:
+          type: number
+          description: Total hours worked on the specified day
+          minimum: 0
+      required:
+        - date
+        - totalHours
+    WorkTimeByDayWithUser:
+      type: object
+      properties:
+        date:
+          type: string
+          description: Date in YYYY-MM-DD format
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        userId:
+          type: string
+          description: MongoDB ObjectId of the user
+          pattern: '^[0-9a-fA-F]{24}$'
+        userEmail:
+          type: string
+          format: email
+          description: User’s email address
+        totalHours:
+          type: number
+          description: Total hours worked on the specified day
+          minimum: 0
+      required:
+        - date
+        - userId
+        - userEmail
+        - totalHours
+    TotalTimeByProject:
+      type: object
+      properties:
+        projectId:
+          type: string
+          description: MongoDB ObjectId of the project
+          pattern: '^[0-9a-fA-F]{24}$'
+        projectName:
+          type: string
+          description: Name of the project
+          minLength: 1
+          maxLength: 100
+        totalHours:
+          type: number
+          description: Total hours worked on the project
+          minimum: 0
+      required:
+        - projectId
+        - projectName
+        - totalHours
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Human-readable error message
+        code:
+          type: string
+          description: Optional error code for programmatic handling
+          nullable: true
+      required:
+        - message
