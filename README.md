@@ -62,17 +62,16 @@ cd time-tracker
 
 3. Create a `.env` file:
    ```
-MONGODB_URI=
+   MONGODB_URI=
+   JWT_SECRET=your_jwt_secret
+   FRONTEND_URL=http://localhost:5173
+   PORT=3000
+   NODE_ENV=development
 
-JWT_SECRET=your_jwt_secret
-FRONTEND_URL=http://localhost:5173
-PORT=3000
-NODE_ENV=development
-
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_USER= 
-EMAIL_PASS= 
+   EMAIL_HOST=smtp.gmail.com
+   EMAIL_PORT=587
+   EMAIL_USER= 
+   EMAIL_PASS=
    ```
    *Replace `your_jwt_secret_here` with a secure random string*
 
